@@ -77,6 +77,14 @@ pub fn update(state: &mut State32, input: *u8, len: uint) -> ErrCode {
     }
 }
 
+pub fn xxh32(input: *u8, len: uint, seed: u32) -> u32 {
+    if ENDIANNESS == LittleEndian {
+        endian_align(input, len, seed, LittleEndian, Unaligned)
+    } else {
+        endian_align(input, len, seed, BigEndian, Unaligned)
+    }
+}
+
 macro_rules! A32(
     ($expr:expr) => (
         {
@@ -214,14 +222,6 @@ fn endian_align(input: *u8, len: uint, seed: u32, endian: Endianness, align: Ali
     h32 ^= h32 >> 16;
 
     h32
-}
-
-fn xxh32(input: *u8, len: uint, seed: u32) -> u32 {
-    if ENDIANNESS == LittleEndian {
-        endian_align(input, len, seed, LittleEndian, Unaligned)
-    } else {
-        endian_align(input, len, seed, BigEndian, Unaligned)
-    }
 }
 
 #[inline(always)]

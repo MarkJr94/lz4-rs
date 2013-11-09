@@ -1,5 +1,4 @@
 use self::ll::{State32};
-// use self::ll;
 
 mod ll;
 
@@ -31,12 +30,19 @@ impl Xxh32 {
     pub fn reset(&mut self, seed: u32) {
         ll::reset_state(&mut self.state, seed);
     }
+
+    pub fn one_shot(input: &[u8], seed: u32) -> u32 {
+        do input.as_imm_buf |buf, buf_len| {
+            ll::xxh32(buf, buf_len, seed)
+        }
+    }
 }
+
+
 
 #[cfg(test)]
 mod test {
-    use super::Xxh32;
-    use std::rand;
+    use super::{Xxh32};
 
     static PRIME: u32 = 2654435761u32;
     static SAN_BUF_SIZE: uint = 101;
@@ -51,13 +57,15 @@ mod test {
         let mut h = Xxh32::new_with_input(sentence, seed);
         let answer2 = h.digest();
 
+        let answer3 = Xxh32::one_shot(sentence, seed);
 
-        println!("[HEX] Answer 1: 0x{:X}, Answer 2: 0x{:X}, Solution: 0x{:X}", answer1, answer2, solution);
-        println!("[DECIMAL] Answer 1: {:u}, Answer 2: {:u}, Solution: {:u}", answer1, answer2, solution);
+        println!("[HEX] Answer 1: 0x{:X}, Answer 2: 0x{:X}, Answer 3: 0x{:X}, Solution: 0x{:X}", answer1, answer2, answer3, solution);
+        println!("[DECIMAL] Answer 1: {:u}, Answer 2: {:u}, Answer 3: {:u}, Solution: {:u}", answer1, answer2, answer3, solution);
 
-        assert_eq!(answer1, answer2);
+        assert!(answer1 == answer2 && answer2 == answer3);
         assert_eq!(answer1, solution);
         assert_eq!(answer2, solution);
+        assert_eq!(answer3, solution);
     }
 
     #[test]
