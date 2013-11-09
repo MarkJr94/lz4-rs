@@ -1,4 +1,5 @@
 #[feature(macro_rules)];
+// #[feature(asm)];
 
 #[link(name="lz4",
     vers="0.1",

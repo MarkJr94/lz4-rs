@@ -20,7 +20,9 @@ impl Xxh32 {
     }
 
     pub fn update(&mut self, input: &[u8]) -> bool {
-        ll::Okay == ll::update(&mut self.state, input.as_imm_buf(|buf, _| buf), input.len())
+        do input.as_imm_buf |buf, buf_len| {
+            ll::Okay == ll::update(&mut self.state, buf, buf_len)
+        }
     }
 
     pub fn digest(&mut self) -> u32 {
@@ -43,24 +45,28 @@ impl Xxh32 {
 #[cfg(test)]
 mod test {
     use super::{Xxh32};
+    use std::rand;
+    use std::rand::Rng;
+    use extra::test::BenchHarness;
 
     static PRIME: u32 = 2654435761u32;
     static SAN_BUF_SIZE: uint = 101;
 
     fn test_sequence(sentence: &[u8], seed: u32, solution: u32) {
-        let mut h = Xxh32::new(seed);
+       let answer1 = Xxh32::one_shot(sentence, seed);
+
+       let mut h = Xxh32::new(seed);
         h.update(sentence);
-        let answer1 = h.digest();
-
-        println!("{}", sentence.len());
-
-        let mut h = Xxh32::new_with_input(sentence, seed);
         let answer2 = h.digest();
 
-        let answer3 = Xxh32::one_shot(sentence, seed);
+        let mut h = Xxh32::new(seed);
+        for x in sentence.iter().map(|x| *x) {
+            h.update(&[x]);
+        }
+        let answer3 = h.digest();
 
-        println!("[HEX] Answer 1: 0x{:X}, Answer 2: 0x{:X}, Answer 3: 0x{:X}, Solution: 0x{:X}", answer1, answer2, answer3, solution);
-        println!("[DECIMAL] Answer 1: {:u}, Answer 2: {:u}, Answer 3: {:u}, Solution: {:u}", answer1, answer2, answer3, solution);
+        debug!("[HEX] Answer 1: 0x{:X}, Answer 2: 0x{:X}, Answer 3: 0x{:X}, Solution: 0x{:X}", answer1, answer2, answer3, solution);
+        debug!("[DECIMAL] Answer 1: {:u}, Answer 2: {:u}, Answer 3: {:u}, Solution: {:u}", answer1, answer2, answer3, solution);
 
         assert!(answer1 == answer2 && answer2 == answer3);
         assert_eq!(answer1, solution);
@@ -78,7 +84,25 @@ mod test {
             random *= random;
         }
 
+        debug!("{}:{}: Sanity: {}", file!(), line!(), sanity.to_str());
+
         test_sequence(sanity, 0, 0x1F1AA412);
         test_sequence(sanity, PRIME, 0x498EC8E2);
     }
+
+    #[bench]
+    fn bench_hash_rand(b: &mut BenchHarness) {
+        let mut rng = rand::rng();
+        let data = rng.gen_vec(1024 * 32);
+        let mut h = Xxh32::new(PRIME);
+
+        do b.iter {
+            h.update(data);
+            h.digest();
+            h.reset(PRIME);
+        }
+
+        b.bytes = 1024 * 32;
+    }
 }
+

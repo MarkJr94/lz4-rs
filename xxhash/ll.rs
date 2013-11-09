@@ -98,9 +98,9 @@ macro_rules! rotl32(
     ($x:expr, $r:expr) => ( ($x << $r) | ($x >> (32 - $r)) )
 )
 
-// macro_rules! rotl32u(
-//     ($x:expr, $r:expr) => ( (x << r) | (x >> (32u32 - r)) )
-// )
+macro_rules! rotl32_no_unsafe(
+    ($x:expr, $r:expr) => ( ($x << $r) | ($x >> (32 - $r)) )
+)
 
 macro_rules! swap32(
     ($x:expr) => (::std::unstable::intrinsics::bswap32($x as i32))
@@ -209,7 +209,7 @@ fn endian_align(input: *u8, len: uint, seed: u32, endian: Endianness, align: Ali
         p = unsafe { p.offset(4) };
     }
 
-    while p <= b_end {
+    while p < b_end {
         h32 += unsafe { *p } as u32 * PRIME32_5;
         h32 = rotl32!(h32, 11) * PRIME32_1;
         p = unsafe { p.offset(1) };
@@ -227,7 +227,7 @@ fn endian_align(input: *u8, len: uint, seed: u32, endian: Endianness, align: Ali
 #[inline(always)]
 fn update_endian(state: &mut State32, input: *u8, len: uint, endian: Endianness) -> ErrCode {
     let mut p = input;
-    let b_end = unsafe { input.offset(len as int) };
+    let b_end = unsafe { p.offset(len as int) };
 
     assert!(ptr::is_not_null(p));
 
@@ -244,31 +244,33 @@ fn update_endian(state: &mut State32, input: *u8, len: uint, endian: Endianness)
         return Okay;
     }
 
-    if (state.memsize > 0) {
+    if (state.memsize != 0) {
+
         do state.memory.as_mut_buf |buf, _| {
             unsafe {
                 ptr::copy_memory(buf.offset(state.memsize as int), input, 16 - state.memsize as uint);
             }
         };
+
         unsafe {
-            let mut p32: *u32 = p as *u32;
+            let mut p32: *u32 = state.memory.as_mut_buf(|buf,_| buf) as *u32;
             state.v1 += read_le32(p32, endian) * PRIME32_2;
-            state.v1 = rotl32!(state.v1, 13);
+            state.v1 = rotl32_no_unsafe!(state.v1, 13);
             state.v1 *= PRIME32_1;
             p32 = p32.offset(1);
 
             state.v2 += read_le32(p32, endian) * PRIME32_2;
-            state.v2 = rotl32!(state.v2, 13);
+            state.v2 = rotl32_no_unsafe!(state.v2, 13);
             state.v2 *= PRIME32_1;
             p32 = p32.offset(1);
 
             state.v3 += read_le32(p32, endian) * PRIME32_2;
-            state.v3 = rotl32!(state.v3, 13);
+            state.v3 = rotl32_no_unsafe!(state.v3, 13);
             state.v3 *= PRIME32_1;
             p32 = p32.offset(1);
 
             state.v4 += read_le32(p32, endian) * PRIME32_2;
-            state.v4 = rotl32!(state.v4, 13);
+            state.v4 = rotl32_no_unsafe!(state.v4, 13);
             state.v4 *= PRIME32_1;
 //             p32 = p32.offset(1);
         }
@@ -314,6 +316,7 @@ fn update_endian(state: &mut State32, input: *u8, len: uint, endian: Endianness)
     }
 
     if p < b_end {
+
         do state.memory.as_mut_buf |buf, _| {
             unsafe {
                 ptr::copy_memory(buf, p, b_end.to_uint() - p.to_uint());
@@ -328,14 +331,17 @@ fn update_endian(state: &mut State32, input: *u8, len: uint, endian: Endianness)
 
 #[inline(always)]
 fn intermediate_digest_endian(state: &mut State32, endian: Endianness) -> u32 {
+
     let mut p = state.memory.as_mut_buf(|buf, _| buf);
     let b_end = unsafe { p.offset(state.memsize as int) };
     let mut h32: u32;
 
     if state.total_len >= 16 {
         h32 = rotl32!(state.v1, 1) + rotl32!(state.v2, 7) + rotl32!(state.v3, 12) + rotl32!(state.v4, 18);
+
     } else {
         h32 = state.seed + PRIME32_5;
+
     }
 
     h32 += state.total_len as u32;
@@ -346,7 +352,7 @@ fn intermediate_digest_endian(state: &mut State32, endian: Endianness) -> u32 {
         p = unsafe { p.offset(4) };
     }
 
-    while p <= b_end {
+    while p < b_end {
         h32 += unsafe { *p } as u32 * PRIME32_5;
         h32 = rotl32!(h32, 11) * PRIME32_1;
         p = unsafe { p.offset(1) };
