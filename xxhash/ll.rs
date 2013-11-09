@@ -1,5 +1,82 @@
 use std::ptr;
 
+pub static SIZE_OF_STATE: uint = 48;
+
+#[deriving(Eq, Clone, ToStr)]
+pub enum ErrCode {
+    Okay = 0,
+    Error
+}
+
+// #[deriving(Clone, ToStr)]
+pub struct State32 {
+    total_len: u64,
+    seed: u32,
+    v1: u32,
+    v2: u32,
+    v3: u32,
+    v4: u32,
+    memsize: i32,
+    memory: [u8, ..16]
+}
+
+impl State32 {
+    pub fn new(seed: u32) -> State32 {
+        State32 {
+            total_len: 0u64,
+            seed: seed,
+            v1: seed + PRIME32_1 + PRIME32_2,
+            v2: seed + PRIME32_2,
+            v3: seed + 0u32,
+            v4: seed - PRIME32_1,
+            memsize: 0i32,
+            memory: [0u8, ..16]
+        }
+    }
+}
+
+pub fn size_of_state() -> uint {
+    use std::mem;
+
+    assert!(SIZE_OF_STATE >= mem::size_of::<State32>());
+
+    mem::size_of::<State32>()
+}
+
+pub fn reset_state(state: &mut State32, seed: u32) -> ErrCode {
+    state.seed = seed;
+    state.v1 = seed + PRIME32_1 + PRIME32_2;
+    state.v2 = seed + PRIME32_2;
+    state.v3 = seed + 0u32;
+    state.v4 = seed + PRIME32_1;
+    state.total_len = 0u64;
+    state.memsize = 0i32;
+    for byte in state.memory.mut_iter() {
+        *byte = 0u8;
+    }
+    Okay
+}
+
+pub fn intermediate_digest(state: &mut State32) -> u32 {
+    if ENDIANNESS == LittleEndian {
+        intermediate_digest_endian(state, LittleEndian)
+    } else {
+        intermediate_digest_endian(state, BigEndian)
+    }
+}
+
+pub fn digest(mut state: State32) -> u32 {
+    intermediate_digest(&mut state)
+}
+
+pub fn update(state: &mut State32, input: *u8, len: uint) -> ErrCode {
+    if ENDIANNESS == LittleEndian {
+        update_endian(state, input, len, LittleEndian)
+    } else {
+        update_endian(state, input, len, BigEndian)
+    }
+}
+
 macro_rules! A32(
     ($expr:expr) => (
         {
@@ -31,8 +108,6 @@ macro_rules! do_while(
     )
 )
 
-static SIZE_OF_STATE: uint = 48;
-
 #[cfg(target_endian = "big")]
 static ENDIANNESS: Endianness =  BigEndian;
 
@@ -42,12 +117,6 @@ static ENDIANNESS: Endianness =  LittleEndian;
 // pub fn size_of_state() -> uint {
 //     std::sys::size_of::<State>()
 // }
-
-#[deriving(Eq, Clone, ToStr)]
-enum ErrCode {
-    Okay = 0,
-    Error
-}
 
 #[deriving(Eq, Clone, ToStr)]
 enum Alignment {
@@ -155,52 +224,6 @@ fn xxh32(input: *u8, len: uint, seed: u32) -> u32 {
     }
 }
 
-// #[deriving(Clone, ToStr)]
-struct State32 {
-    total_len: u64,
-    seed: u32,
-    v1: u32,
-    v2: u32,
-    v3: u32,
-    v4: u32,
-    memsize: i32,
-    memory: [u8, ..16]
-}
-
-impl State32 {
-    pub fn new(seed: u32) -> State32 {
-        State32 {
-            total_len: 0u64,
-            seed: seed,
-            v1: seed + PRIME32_1 + PRIME32_2,
-            v2: seed + PRIME32_2,
-            v3: seed + 0u32,
-            v4: seed - PRIME32_1,
-            memsize: 0i32,
-            memory: [0u8, ..16]
-        }
-    }
-}
-
-fn size_of_state() -> uint {
-    use std::mem;
-
-    assert!(SIZE_OF_STATE >= mem::size_of::<State32>());
-
-    mem::size_of::<State32>()
-}
-
-fn reset_state(state: &mut State32, seed: u32) -> ErrCode {
-    state.seed = seed;
-    state.v1 = seed + PRIME32_1 + PRIME32_2;
-    state.v2 = seed + PRIME32_2;
-    state.v3 = seed + 0u32;
-    state.v4 = seed + PRIME32_1;
-    state.total_len = 0u64;
-    state.memsize = 0i32;
-    Okay
-}
-
 #[inline(always)]
 fn update_endian(state: &mut State32, input: *u8, len: uint, endian: Endianness) -> ErrCode {
     let mut p = input;
@@ -303,17 +326,38 @@ fn update_endian(state: &mut State32, input: *u8, len: uint, endian: Endianness)
     Okay
 }
 
-fn update(state: &mut State32, input: *u8, len: uint) -> ErrCode {
-    if ENDIANNESS == LittleEndian {
-        update_endian(state, input, len, LittleEndian)
-    } else {
-        update_endian(state, input, len, BigEndian)
-    }
-}
-
 #[inline(always)]
-fn intermediate_digest_endian(state: &mut state, endian: Endianness) -> u32 {
+fn intermediate_digest_endian(state: &mut State32, endian: Endianness) -> u32 {
     let mut p = state.memory.as_mut_buf(|buf, _| buf);
+    let b_end = unsafe { p.offset(state.memsize as int) };
+    let mut h32: u32;
 
-    Okay
+    if state.total_len >= 16 {
+        h32 = rotl32!(state.v1, 1) + rotl32!(state.v2, 7) + rotl32!(state.v3, 12) + rotl32!(state.v4, 18);
+    } else {
+        h32 = state.seed + PRIME32_5;
+    }
+
+    h32 += state.total_len as u32;
+
+    while unsafe { p <= b_end.offset(-4) } {
+        h32 += read_le32(p as *u32, endian) * PRIME32_3;
+        h32 = rotl32!(h32, 17) * PRIME32_4;
+        p = unsafe { p.offset(4) };
+    }
+
+    while p <= b_end {
+        h32 += unsafe { *p } as u32 * PRIME32_5;
+        h32 = rotl32!(h32, 11) * PRIME32_1;
+        p = unsafe { p.offset(1) };
+    }
+
+    h32 ^= h32 >> 15;
+    h32 *= PRIME32_2;
+    h32 ^= h32 >> 13;
+    h32 *= PRIME32_3;
+    h32 ^= h32 >> 16;
+
+    h32
 }
+
