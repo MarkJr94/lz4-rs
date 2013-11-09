@@ -302,3 +302,18 @@ fn update_endian(state: &mut State32, input: *u8, len: uint, endian: Endianness)
 
     Okay
 }
+
+fn update(state: &mut State32, input: *u8, len: uint) -> ErrCode {
+    if ENDIANNESS == LittleEndian {
+        update_endian(state, input, len, LittleEndian)
+    } else {
+        update_endian(state, input, len, BigEndian)
+    }
+}
+
+#[inline(always)]
+fn intermediate_digest_endian(state: &mut state, endian: Endianness) -> u32 {
+    let mut p = state.memory.as_mut_buf(|buf, _| buf);
+
+    Okay
+}
