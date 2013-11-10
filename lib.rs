@@ -12,10 +12,11 @@
 extern mod extra;
 
 mod macros;
-pub mod lz4;
+pub mod lz4rs;
 mod xxhash;
 
-if_x64!()
 fn main() {
-    println!("{}", lz4::ARCH64);
+    use xxhash::Xxh32;
+
+    println!("{}", Xxh32::new(0u32).to_str());
 }

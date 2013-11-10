@@ -2,6 +2,7 @@ use self::ll::{State32};
 
 mod ll;
 
+#[deriving(ToStr)]
 pub struct Xxh32 {
     state: State32
 }

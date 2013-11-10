@@ -8,7 +8,7 @@ pub enum ErrCode {
     Error
 }
 
-// #[deriving(Clone, ToStr)]
+#[deriving( ToStr)]
 pub struct State32 {
     total_len: u64,
     seed: u32,
@@ -85,20 +85,7 @@ pub fn xxh32(input: *u8, len: uint, seed: u32) -> u32 {
     }
 }
 
-macro_rules! A32(
-    ($expr:expr) => (
-        {
-            let thing: *u32 = ::std::cast::transmute($expr);
-            *thing
-        }
-    )
-)
-
 macro_rules! rotl32(
-    ($x:expr, $r:expr) => ( ($x << $r) | ($x >> (32 - $r)) )
-)
-
-macro_rules! rotl32_no_unsafe(
     ($x:expr, $r:expr) => ( ($x << $r) | ($x >> (32 - $r)) )
 )
 
@@ -106,25 +93,11 @@ macro_rules! swap32(
     ($x:expr) => (::std::unstable::intrinsics::bswap32($x as i32))
 )
 
-macro_rules! do_while(
-    ($body:expr, $cond:expr) => (
-        loop {
-            $body;
-
-            if !$cond { break; }
-        }
-    )
-)
-
 #[cfg(target_endian = "big")]
 static ENDIANNESS: Endianness =  BigEndian;
 
 #[cfg(target_endian = "little")]
 static ENDIANNESS: Endianness =  LittleEndian;
-
-// pub fn size_of_state() -> uint {
-//     std::sys::size_of::<State>()
-// }
 
 #[deriving(Eq, Clone, ToStr)]
 enum Alignment {
@@ -255,22 +228,22 @@ fn update_endian(state: &mut State32, input: *u8, len: uint, endian: Endianness)
         unsafe {
             let mut p32: *u32 = state.memory.as_mut_buf(|buf,_| buf) as *u32;
             state.v1 += read_le32(p32, endian) * PRIME32_2;
-            state.v1 = rotl32_no_unsafe!(state.v1, 13);
+            state.v1 = rotl32!(state.v1, 13);
             state.v1 *= PRIME32_1;
             p32 = p32.offset(1);
 
             state.v2 += read_le32(p32, endian) * PRIME32_2;
-            state.v2 = rotl32_no_unsafe!(state.v2, 13);
+            state.v2 = rotl32!(state.v2, 13);
             state.v2 *= PRIME32_1;
             p32 = p32.offset(1);
 
             state.v3 += read_le32(p32, endian) * PRIME32_2;
-            state.v3 = rotl32_no_unsafe!(state.v3, 13);
+            state.v3 = rotl32!(state.v3, 13);
             state.v3 *= PRIME32_1;
             p32 = p32.offset(1);
 
             state.v4 += read_le32(p32, endian) * PRIME32_2;
-            state.v4 = rotl32_no_unsafe!(state.v4, 13);
+            state.v4 = rotl32!(state.v4, 13);
             state.v4 *= PRIME32_1;
 //             p32 = p32.offset(1);
         }
