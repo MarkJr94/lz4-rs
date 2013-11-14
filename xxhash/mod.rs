@@ -2,38 +2,59 @@ use self::ll::{State32};
 
 mod ll;
 
+/// Represents the xxhash32 state
 #[deriving(ToStr)]
 pub struct Xxh32 {
-    state: State32
+    priv state: State32
 }
 
 impl Xxh32 {
+    /// Creates a new Xxh32
+    /// # Arguments
+    /// * `seed` - seed to use for xxhash32
     pub fn new(seed: u32) -> Xxh32 {
         Xxh32 {
             state: State32::new(seed)
         }
     }
 
+    /// Creates a new Xxh32 and feeds it input immediately
+    /// # Arguments
+    /// * `seed` - seed to use for xxhash32
     pub fn new_with_input(input: &[u8], seed: u32) -> Xxh32 {
         let mut x = Xxh32::new(seed);
         ll::update(&mut x.state, input.as_imm_buf(|buf, _| buf), input.len());
         x
     }
 
+    /// Feeds more data into the digest context
+    /// # Arguments
+    /// * `input` - data to feed
+    /// # Return value
+    /// if `true` update was successful
     pub fn update(&mut self, input: &[u8]) -> bool {
         do input.as_imm_buf |buf, buf_len| {
             ll::Okay == ll::update(&mut self.state, buf, buf_len)
         }
     }
 
+    /// Generates the hash, but preserves the state, such that
+    ///  further calls to `digest` and `update` are possible
     pub fn digest(&mut self) -> u32 {
         ll::intermediate_digest(&mut self.state)
     }
 
+    /// Resets the XXh32 struct to blank state, with a new seeds
+    /// # Arguments
+    /// * `seed` - The new seed
     pub fn reset(&mut self, seed: u32) {
         ll::reset_state(&mut self.state, seed);
     }
 
+    /// Hashes the entire slice in one shot
+    /// # Arguments
+    /// * `input` - the slice to be hashed
+    /// * `seed` - the seed to be used in the hashing
     pub fn one_shot(input: &[u8], seed: u32) -> u32 {
         do input.as_imm_buf |buf, buf_len| {
             ll::xxh32(buf, buf_len, seed)

@@ -1,13 +1,16 @@
 use std::ptr;
 
+#[allow(missing_doc)]
 pub static SIZE_OF_STATE: uint = 48;
 
+#[allow(missing_doc)]
 #[deriving(Eq, Clone, ToStr)]
 pub enum ErrCode {
     Okay = 0,
     Error
 }
 
+#[allow(missing_doc)]
 #[deriving( ToStr)]
 pub struct State32 {
     total_len: u64,
@@ -21,6 +24,7 @@ pub struct State32 {
 }
 
 impl State32 {
+    #[allow(missing_doc)]
     pub fn new(seed: u32) -> State32 {
         State32 {
             total_len: 0u64,
@@ -35,14 +39,7 @@ impl State32 {
     }
 }
 
-pub fn size_of_state() -> uint {
-    use std::mem;
-
-    assert!(SIZE_OF_STATE >= mem::size_of::<State32>());
-
-    mem::size_of::<State32>()
-}
-
+#[allow(missing_doc)]
 pub fn reset_state(state: &mut State32, seed: u32) -> ErrCode {
     state.seed = seed;
     state.v1 = seed + PRIME32_1 + PRIME32_2;
@@ -57,6 +54,7 @@ pub fn reset_state(state: &mut State32, seed: u32) -> ErrCode {
     Okay
 }
 
+#[allow(missing_doc)]
 pub fn intermediate_digest(state: &mut State32) -> u32 {
     if ENDIANNESS == LittleEndian {
         intermediate_digest_endian(state, LittleEndian)
@@ -65,10 +63,12 @@ pub fn intermediate_digest(state: &mut State32) -> u32 {
     }
 }
 
+#[allow(missing_doc)]
 pub fn digest(mut state: State32) -> u32 {
     intermediate_digest(&mut state)
 }
 
+#[allow(missing_doc)]
 pub fn update(state: &mut State32, input: *u8, len: uint) -> ErrCode {
     if ENDIANNESS == LittleEndian {
         update_endian(state, input, len, LittleEndian)
@@ -77,6 +77,7 @@ pub fn update(state: &mut State32, input: *u8, len: uint) -> ErrCode {
     }
 }
 
+#[allow(missing_doc)]
 pub fn xxh32(input: *u8, len: uint, seed: u32) -> u32 {
     if ENDIANNESS == LittleEndian {
         endian_align(input, len, seed, LittleEndian, Unaligned)
