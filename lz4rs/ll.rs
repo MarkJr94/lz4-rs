@@ -65,7 +65,7 @@ pub fn decompress_safe(source: &[u8], dest: &mut[u8]) -> int {
 /// The worst case size of the compressed output, or None if input is too large
 #[inline]
 pub fn compress_bound(isize: uint) -> Option<uint> {
-    if isize > MAX_INPUT_SIZE { None } else { Some(isize + ((isize / 255) + 16)) }
+    if isize > MAX_INPUT_SIZE { None } else { Some(isize + ((isize / 50) + 16)) }
 }
 
 /// Compresses input to destination in one shot, with limit room for output
@@ -449,7 +449,7 @@ fn get_position(p: *u8, table_base: *(), tt: TableType, src_base: *u8) -> *u8 {
     get_position_on_hash(h, table_base, tt, src_base)
 }
 
-#[inline(always)]
+// #[inline(always)]
 unsafe fn compress_generic(
     ctx: *mut Lz4Data,
     source: *u8,
@@ -460,15 +460,15 @@ unsafe fn compress_generic(
     tt: TableType,
     prefix: Prefix64k) -> int {
 
-    let mut ip = source;
-    let base = if prefix == WithPrefix {  (*ctx).base } else { source };
-    let low_limit = if prefix == WithPrefix {  (*ctx).buffer_start } else { source };
-    let mut anchor = source;
-    let iend = ip.offset(input_size as int);
-    let mflimit = iend.offset(-(MFLIMIT as int));
-    let matchlimit = iend.offset(-(LAST_LITERALS as int));
+    let mut ip: *u8 = source;
+    let base: *u8 = if prefix == WithPrefix {  (*ctx).base } else { source };
+    let low_limit: *u8 = if prefix == WithPrefix {  (*ctx).buffer_start } else { source };
+    let mut anchor: *u8 = source;
+    let iend: *u8 = ip.offset(input_size as int);
+    let mflimit: *u8 = iend.offset(-(MFLIMIT as int));
+    let matchlimit: *u8 = iend.offset(-(LAST_LITERALS as int));
 
-    let mut op = dest;
+    let mut op: *mut u8 = dest;
     let oend: *mut u8 = op.offset(max_out_size as int);
 
     let mut length: int;
@@ -476,15 +476,27 @@ unsafe fn compress_generic(
     let mut forwardH: u32;
 
     // Init conditions
-    if input_size > MAX_INPUT_SIZE { return 0; }
-    if prefix == WithPrefix && ip != (*ctx).next_block { return 0; }
+    if input_size > MAX_INPUT_SIZE {
+        debug!("input_size > MAX_INPUT_SIZE");
+        return 0;
+    }
+    if prefix == WithPrefix && ip != (*ctx).next_block {
+        debug!("prefix == WithPrefix && ip != (*ctx).next_block");
+        return 0;
+    }
     if prefix == WithPrefix { (*ctx).next_block = iend; }
-    if tt == ByU16 && input_size >= LIMIT64K { return 0; }
+    if tt == ByU16 && input_size >= LIMIT64K {
+        debug!("tt == ByU16 && input_size >= LIMIT64K");
+        return 0;
+    }
     if input_size < MINLENGTH {
         let mut lastrun = iend.offset(-(anchor as int)) as int;
         if lim_output == Limited && (op.offset(-(dest as int)))
             .offset(lastrun + 1 + ((lastrun + 255 - RUN_MASK as int)/255)) as uint
                 > max_out_size {
+            debug!("lim_output == Limited && (op.offset(-(dest as int)))
+            .offset(lastrun + 1 + ((lastrun + 255 - RUN_MASK as int)/255)) as uint
+                > max_out_size");
             return 0;
         }
         if lastrun >= RUN_MASK as int {
@@ -499,12 +511,14 @@ unsafe fn compress_generic(
             *op = (lastrun << ML_BITS) as u8; op = op.offset(1);
         }
         ::std::ptr::copy_memory(op, anchor, iend.offset(-(anchor as int))  as uint);
-        op.offset(iend.offset(-(anchor as int))  as int);
+        op = op.offset(iend.offset(-(anchor as int))  as int);
+
+        return op.offset(-(dest as int)) as int;
     }
 
     // First byte
     put_position(ip, ctx as *(), tt, base);
-    ip.offset(1);
+    ip = ip.offset(1);
     forwardH = hash_position(ip, tt) as u32;
 
     // Labeled loops are being used to emulate GOTOs found in the C code here:
@@ -531,16 +545,18 @@ unsafe fn compress_generic(
         }, reff.offset(MAX_DISTANCE as int) < ip || A32!(reff) != A32!(ip)  )
 
         // Catch up
-        while ip > anchor && reff > low_limit && ip.offset(-1) == reff.offset(-1) {
+        while ip > anchor && reff > low_limit && *ip.offset(-1) == *reff.offset(-1) {
             ip = ip.offset(-1);
             reff = reff.offset(-1);
         }
 
         // Encode literal length
         length = ip.offset(-(anchor as int)) as int;
-        token = op.offset(1); op = op.offset(1);
+        token = op; op = op.offset(1);
         if lim_output == Limited &&
             op.offset(length + 2 + 1 + LAST_LITERALS as int + length >> 8) > oend {
+            debug!("lim_output == Limited &&
+            op.offset(length + 2 + 1 + LAST_LITERALS as int + length >> 8) > oend");
             return 0;
         }
         if length >= RUN_MASK as int {
@@ -564,7 +580,7 @@ unsafe fn compress_generic(
 
         'next_match : loop {
             // Write offset
-            write_le16!(op, ip.offset(reff as int) as u16);
+            write_le16!(op, ip.offset(-(reff as int)) as u16);
 
             // Start counting
             ip = ip.offset(MINMATCH as int); reff = reff.offset(MINMATCH as int);
@@ -605,6 +621,8 @@ unsafe fn compress_generic(
                 length = ip.offset(-(anchor as int)) as int;
                 if lim_output == Limited && (op.offset(1i + LAST_LITERALS as int + length >> 8)
                     > oend) {
+                    debug!("lim_output == Limited && (op.offset(1i + LAST_LITERALS as
+                    int + length >> 8) > oend)");
                     return 0;
                 }
                 if length >= ML_MASK as int {
@@ -660,24 +678,24 @@ unsafe fn compress_generic(
             return 0;
         }
         if lastrun >= RUN_MASK as int {
-            *op = RUN_MASK as u8 << ML_BITS as u8; op.offset(1);
+            *op = RUN_MASK as u8 << ML_BITS as u8; op = op.offset(1);
             lastrun -= RUN_MASK as int;
             while lastrun >= 255 {
-                *op = 255; op.offset(1);
-                *op = lastrun as u8; op.offset(1);
+                *op = 255; op = op.offset(1);
+                *op = lastrun as u8; op = op.offset(1);
                 lastrun -= 255
             }
         } else {
-            *op = (lastrun << ML_BITS) as u8; op.offset(1);
+            *op = (lastrun << ML_BITS) as u8; op = op.offset(1);
         }
         ::std::ptr::copy_memory(op, anchor, iend.offset(-(anchor as int))  as uint);
-        op.offset(iend.offset(-(anchor as int))  as int);
+        op = op.offset(iend.offset(-(anchor as int))  as int);
     }
 
     op.offset(-(dest as int)) as int
 }
 
-#[inline(always)]
+// #[inline(always)]
 unsafe fn decompress_generic(source: *u8,
     dest: *mut u8,
     input_size: uint,
@@ -695,7 +713,7 @@ unsafe fn decompress_generic(source: *u8,
     let iend: *u8 = ip.offset(input_size as int);
 
     let mut op: *mut u8 = dest;
-    let oend: *u8 = op.offset(output_size as int) as *u8;
+    let oend: *mut u8 = op.offset(output_size as int);
     let mut cpy: *mut u8;
     let mut oexit: *mut u8 = op.offset(target_out_size as int);
 
@@ -707,7 +725,7 @@ unsafe fn decompress_generic(source: *u8,
         oexit = oend.offset(-(MFLIMIT as int)) as *mut u8;
     }
     if end_on_input == OnInputSize && output_size == 0 {
-        return if input_size == 1 && *ip == 0 { 0 } else { 1 };
+        return if input_size == 1 && *ip == 0 { 0 } else { -1 };
     }
     if end_on_input == OnOutPutSize && output_size == 0 {
         return if *ip == 0 { 1 } else { -1 };
@@ -739,21 +757,21 @@ unsafe fn decompress_generic(source: *u8,
 
             // Copy literals
             cpy = op.offset(length as int);
-            if (end_on_input == OnInputSize &&
-                ((cpy > if partial_decoding == Partial { oexit }
-                    else { oend.offset(-(MFLIMIT as int)) as *mut u8 }) ||
-                (ip.offset(length as int) > iend.offset(-(2 + 1 + LAST_LITERALS as int))))) ||
+            if (((end_on_input == OnInputSize) &&
+                ((cpy > (if partial_decoding == Partial { oexit }
+                    else { oend.offset(-(MFLIMIT as int)) as *mut u8 })) ||
+                (ip.offset(length as int) > iend.offset(-(2 + 1 + LAST_LITERALS as int)))) ) ||
                 ((end_on_input == OnOutPutSize) &&
-                    cpy > oend.offset(-(COPY_LENGTH as int)) as *mut u8) {
+                    (cpy > oend.offset(-(COPY_LENGTH as int)) as *mut u8))) {
 
                 if partial_decoding == Partial {
-                    if cpy as *u8 > oend { break 'decode; }
+                    if cpy > oend { break 'decode; }
                     if end_on_input == OnInputSize &&
                         ip.offset(length as int) > iend { break 'decode; }
                 } else {
-                    if end_on_input == OnOutPutSize && cpy as *u8 != oend { break 'decode; }
+                    if end_on_input == OnOutPutSize && cpy != oend { break 'decode; }
                     if end_on_input == OnInputSize &&
-                        (ip.offset(length as int) != iend || cpy as *u8 > oend) { break 'decode; }
+                        (ip.offset(length as int) != iend || cpy > oend) { break 'decode; }
                 }
 
                 ptr::copy_memory(op, ip, length as uint);
@@ -784,7 +802,7 @@ unsafe fn decompress_generic(source: *u8,
             }
 
             // Copy repeated sequence
-            if (op.offset(reff as int) as uint) < STEPSIZE {
+            if (op.offset(-(reff as int)) as uint) < STEPSIZE {
                 let dec64: uint = dec64table[if size_of::<*()>() == 4 { 0 }
                                                 else { op.offset(-(reff as int)) as uint } ];
                 *op = *reff;
@@ -792,7 +810,7 @@ unsafe fn decompress_generic(source: *u8,
                 *op.offset(2) = *reff.offset(2);
                 *op.offset(3) = *reff.offset(3);
                 op = op.offset(4); reff = reff.offset(4);
-                reff = reff.offset(-(dec32table[op.offset(reff as int) as int] as int));
+                reff = reff.offset(-(dec32table[op.offset(-(reff as int)) as int] as int));
                 (A32!(op)) = A32!(reff);
                 op = op.offset(STEPSIZE as int - 4);
                 reff = reff.offset(-(dec64 as int));
@@ -802,10 +820,10 @@ unsafe fn decompress_generic(source: *u8,
 
             cpy = op.offset(length as int - (STEPSIZE as int -4));
 
-            if cpy as *u8 > oend.offset(-(COPY_LENGTH as int - (STEPSIZE as int - 4i))) {
+            if cpy > oend.offset((-COPY_LENGTH as int - (STEPSIZE as int - 4i))) {
                 // Error : last 5 bytes must be literals
-                if cpy as *u8 > oend.offset(-(LAST_LITERALS as int)) { break 'decode; }
-                secure_copy!(op, reff, oend.offset(-(COPY_LENGTH as int)) as *mut u8);
+                if cpy > oend.offset(-(LAST_LITERALS as int)) { break 'decode; }
+                secure_copy!(op, reff, oend.offset(-(COPY_LENGTH as int)));
                 while op < cpy {
                     *op = *reff;
                     op = op.offset(1);
@@ -820,12 +838,74 @@ unsafe fn decompress_generic(source: *u8,
         }
 
         if end_on_input == OnInputSize {
+            debug!("return op.offset(-(dest as int)) as int;");
             return op.offset(-(dest as int)) as int; // # of output bytes decoded
         } else {
+            debug!("return ip.offset(-(source as int)) as int;");
             return ip.offset(-(source as int)) as int; // # of input bytes read
         }
     }
 
     // emulating _output_error label and gotos
+    debug!("Output error: -(ip.offset(-(source as int)) as int) - 1;");
     return -(ip.offset(-(source as int)) as int) - 1;
+}
+
+#[cfg(test)]
+mod test {
+    use super::{compress, decompress_safe, compress_bound};
+    use std::rand;
+    use std::rand::Rng;
+    use std::vec;
+    use std::io::File;
+
+    #[test]
+    fn test_compression_correct() {
+        let orig_path = Path::new("LICENSE.txt");
+        let comp_path = Path::new("LICENSE.txt.lz4");
+
+        let mut orig_f = File::open(&orig_path);
+        let mut comp_f = File::open(&comp_path);
+
+        let orig_data = orig_f.read_to_end();
+        let known_compressed = comp_f.read_to_end();
+
+        let mut out_buf = vec::from_elem(compress_bound(orig_data.len()).unwrap(),
+            0u8);
+
+        let comp_len = compress(orig_data, out_buf);
+        let test_compressed = out_buf.slice_to(comp_len as uint);
+
+        println!("Original length: {}, Known Compression Length: {},
+            Test Compression Length: {}", orig_data.len(), known_compressed.len(),
+            test_compressed.len());
+
+        assert!(test_compressed == known_compressed);
+    }
+
+//     #[test]
+    fn test_reversible() {
+        let mut rng = rand::rng();
+        let original_len = 1024 * 1024;
+        let max_out = compress_bound(original_len);
+
+        let original_data = rng.gen_vec(original_len);
+        let mut compress_buf = vec::from_elem(max_out.unwrap(), 0u8);
+        let mut decompress_buf = vec::from_elem(max_out.unwrap(), 0u8);
+
+        let compressed_size = compress(original_data, compress_buf);
+        println!("MAXOUT: {}, Original size: {}, Compressed size: {}, Compressed/Original ratio {}%",
+            max_out, original_len, compressed_size,
+            100f32 * compressed_size as f32 / original_len as f32);
+
+        let com_slice = compress_buf.slice_to(compressed_size as uint);
+
+        let decompressed_size = decompress_safe(com_slice, decompress_buf);
+        println!("AAAAAAAAAAA {}", decompressed_size);
+        let dec_slice = decompress_buf.slice_to(decompressed_size as uint);
+        println!("AAAAAAAAAAA");
+        assert!(decompressed_size as uint == original_len);
+        assert!(original_data.as_slice() == dec_slice);
+    }
+
 }
