@@ -360,39 +360,39 @@ macro_rules! write_le16(
 // Private functions ==============================
 // ================================================
 #[cfg(target_endian = "big", target_word_size = "64")]
-fn nb_common_bytes(val: u64) -> int {
-    unsafe { (intrinsics::ctlz64(val as i64) >> 3) as int }
+fn nb_common_bytes(val: u64) -> i32 {
+    unsafe { (intrinsics::ctlz64(val as i64) >> 3) as i32 }
 }
 
 #[cfg(target_endian = "little", target_word_size = "64")]
-fn nb_common_bytes(val: u64) -> int {
-    unsafe { (intrinsics::cttz64(val as i64) >> 3) as int }
+fn nb_common_bytes(val: u64) -> i32 {
+    unsafe { (intrinsics::cttz64(val as i64) >> 3) as i32 }
 }
 
 #[cfg(target_endian = "big", target_word_size = "32")]
-fn nb_common_bytes(val: u32) -> int {
-    unsafe { (intrinsics::ctlz32(val as i32) >> 3) as int }
+fn nb_common_bytes(val: u32) -> i32 {
+    unsafe { (intrinsics::ctlz32(val as i32) >> 3) }
 }
 
 #[cfg(target_endian = "little", target_word_size = "32")]
-fn nb_common_bytes(val: u32) -> int {
-    unsafe { (intrinsics::cttz32(val as i32) >> 3) as int }
+fn nb_common_bytes(val: u32) -> i32 {
+    unsafe { (intrinsics::cttz32(val as i32) >> 3) }
 }
 
 // Compression functions ==========================
 // ================================================
 #[inline(always)]
-fn hash_sequence(sequence: u32, table_type: TableType) -> int {
+fn hash_sequence(sequence: u32, table_type: TableType) -> i32 {
     let ret = if table_type == ByU16 {
         ((sequence) *  2654435761u32) >> ((MINMATCH*8) - (HASHLOG+1))
     } else {
         ((sequence) * 2654435761u32) >> ((MINMATCH*8) - HASHLOG)
-    } as int;
+    } as i32;
     ret
 }
 
 #[inline(always)]
-fn hash_position(p: *u8, table_type: TableType) -> int {
+fn hash_position(p: *u8, table_type: TableType) -> i32 {
     hash_sequence(unsafe { A32!(p) }, table_type)
 }
 
@@ -537,7 +537,10 @@ unsafe fn compress_generic(
             ip = forward_ip;
             forward_ip = ip.offset(step);
 
-            if forward_ip > mflimit { break 'outer; }
+            if forward_ip > mflimit {
+                // goto _last_literals
+                break 'outer;
+            }
 
             forwardH = hash_position(forward_ip, tt) as u32;
             reff = get_position_on_hash(h, ctx as *(), tt, base);
@@ -554,7 +557,7 @@ unsafe fn compress_generic(
         length = ip.offset(-(anchor as int)) as int;
         token = op; op = op.offset(1);
         if lim_output == Limited &&
-            op.offset(length + 2 + 1 + LAST_LITERALS as int + length >> 8) > oend {
+                op.offset(length + (2 + 1 + LAST_LITERALS) as int + (length >> 8)) > oend {
             debug!("lim_output == Limited &&
             op.offset(length + 2 + 1 + LAST_LITERALS as int + length >> 8) > oend");
             return 0;
@@ -596,7 +599,7 @@ unsafe fn compress_generic(
                     ip = ip.offset(STEPSIZE as int); reff = reff.offset(STEPSIZE as int);
                     continue;
                 }
-                ip = ip.offset(nb_common_bytes(diff as u64));
+                ip = ip.offset(nb_common_bytes(diff as u64) as int);
                 // used to emulate goto here:
                 // https://code.google.com/p/lz4/source/browse/trunk/lz4.c#497
                 skip = true; break;
@@ -619,7 +622,7 @@ unsafe fn compress_generic(
             'end_count : loop {
                 // Encode match length
                 length = ip.offset(-(anchor as int)) as int;
-                if lim_output == Limited && (op.offset(1i + LAST_LITERALS as int + length >> 8)
+                if lim_output == Limited && (op.offset(1i + LAST_LITERALS as int + (length >> 8))
                     > oend) {
                     debug!("lim_output == Limited && (op.offset(1i + LAST_LITERALS as
                     int + length >> 8) > oend)");
@@ -688,7 +691,7 @@ unsafe fn compress_generic(
         } else {
             *op = (lastrun << ML_BITS) as u8; op = op.offset(1);
         }
-        ::std::ptr::copy_memory(op, anchor, iend.offset(-(anchor as int))  as uint);
+        ptr::copy_memory(op, anchor, iend.offset(-(anchor as int))  as uint);
         op = op.offset(iend.offset(-(anchor as int))  as int);
     }
 
@@ -881,6 +884,29 @@ mod test {
             test_compressed.len());
 
         assert!(test_compressed == known_compressed);
+    }
+
+    #[test]
+    fn test_decompression_correct() {
+        let orig_path = Path::new("LICENSE.txt");
+        let comp_path = Path::new("LICENSE.txt.lz4");
+
+        let mut orig_f = File::open(&orig_path);
+        let mut comp_f = File::open(&comp_path);
+
+        let orig_data = orig_f.read_to_end();
+        let known_compressed = comp_f.read_to_end();
+
+        let mut out_buf = vec::from_elem(compress_bound(orig_data.len()).unwrap(),
+            0u8);
+
+        let decomp_len = decompress_safe(known_compressed, out_buf);
+        let test_decompressed = out_buf.slice_to(decomp_len as uint);
+
+        println!("Original length: {}, Test Decompressed Length: {}",
+            orig_data.len(), test_decompressed.len());
+
+        assert!(test_decompressed == orig_data);
     }
 
 //     #[test]
